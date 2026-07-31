@@ -1,0 +1,45 @@
+backend/
+├── app/
+│   ├── __pycache__/        
+│   ├── image/
+│   │   ├── __pycache__/    
+│   │   └── camera.py
+│   ├── infra/
+│   │   ├── firewall/
+│   │   │   └── nftables.conf
+│   │   ├── monitoring/fail2ban/
+│   │   │   ├── fastapi.conf
+│   │   │   └── jail.local
+│   │   ├── scripts/
+│   │   │   ├── install-system.sh
+│   │   │   └── update.sh
+│   │   └── systemd/
+│   │       ├── fastapi.service
+│   │       ├── update-fastapi.service
+│   │       └── update-fastapi.timer
+│   ├── LoRa/
+│   │   ├── __pycache__/     
+│   │   └── simulationDATA.py
+│   ├── middleware/
+│   │   ├── __pycache__/     
+│   │   ├── logging.py
+│   │   └── rate_limit.py
+│   ├── routers/
+│   │   ├── __pycache__/      
+│   │   ├── auth.py
+│   │   ├── employees.py
+│   │   └── ws.py
+│   └── services/
+│       ├── __pycache__/     
+│       ├── email_service.py
+│       ├── auth.py
+│       ├── database.py
+│       ├── main.py
+│       └── schemas.py
+├── .env
+├── crypto.py
+├── database.db
+├── requirements-dev.txt
+├── requirements-pi4.txt
+├── yolov8n_classify_int8.tflite
+└── yolov8n_detect_int8.tflite

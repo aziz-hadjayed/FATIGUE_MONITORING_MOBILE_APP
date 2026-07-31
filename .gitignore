@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+env/
+.venv/
+*.log
+
+# Flutter
+build/
+*.iml
+*.lock
+pubspec.lock
+.DS_Store
+
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.agents/
+.codex/
+
+
+# Env
+.env

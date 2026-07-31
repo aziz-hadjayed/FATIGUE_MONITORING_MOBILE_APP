@@ -1,0 +1,23 @@
+sudo tee /etc/systemd/system/fastapi.service << 'EOF'
+[Unit]
+Description=FastAPI Fatigue Monitoring
+After=network.target
+
+[Service]
+Type=notify
+User=fastapi
+Group=fastapi
+WorkingDirectory=/home/fastapi/app
+ExecStart=/home/fastapi/app/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 443 --ssl-keyfile /etc/ssl/fastapi/key.pem --ssl-certfile /etc/ssl/fastapi/cert.pem
+Restart=always
+RestartSec=5
+
+# Protections sécurité
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/home/fastapi/app
+
+[Install]
+WantedBy=multi-user.target
+EOF

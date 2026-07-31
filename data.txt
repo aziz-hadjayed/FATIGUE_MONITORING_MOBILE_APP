@@ -1,0 +1,312 @@
+authLogin ::  Méthode HTTP : POST
+
+Requête:
+{
+  "email": "user@example.com",
+  "password": "monMotDePasse123"
+}
+
+Réponse :
+{
+  "user": {
+    "id": "1",
+    "email": "user@example.com",
+    "full_name": "John Doe"
+  },
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+
+---------------------------------------------------------------------------------->>
+authSignup  ::  Méthode HTTP : POST
+
+Requête :
+{
+  "email": "newuser@example.com",
+  "password": "monMotDePasse123",
+  "full_name": "Jane Smith"
+}
+
+Réponse :
+{
+  "user": {
+    "id": "2",
+    "email": "newuser@example.com",
+    "full_name": "Jane Smith"
+  },
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+
+---------------------------------------------------------------------------------->>
+authLogout  ::  Méthode HTTP : POST
+
+Headers requis  :
+           Authorization: Bearer <token>
+
+Réponse :
+{
+  "message": "Déconnecté avec succès"
+}
+
+---------------------------------------------------------------------------------->>
+authVerify  ::  Méthode HTTP : GET
+
+Headers requis  :
+           Authorization: Bearer <token>
+
+Réponse :
+{
+  "valid": true,
+  "user_id": "1"
+}
+
+---------------------------------------------------------------------------------->>
+authRefresh ::  Méthode HTTP : POST
+
+Requête :
+{
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+}
+
+Réponse :
+{
+  "token": "nouveau_token_jwt"
+}
+
+---------------------------------------------------------------------------------->>
+employees :: Méthode HTTP : GET
+
+Headers requis :
+           Authorization: Bearer <token>
+
+
+Réponse :
+[
+  {
+    "id": "1",
+    "firstName": "John",
+    "lastName": "Doe",
+    "role": "Software Engineer",
+  },
+  {
+    "id": "2",
+    "firstName": "Alice",
+    "lastName": "Smith",
+    "role": "Product Manager",
+  }
+]
+
+---------------------------------------------------------------------------------->>
+employeeDetail : Méthode HTTP : GET
+
+Headers requis :
+           Authorization: Bearer <token>
+
+Réponse :
+{
+  "id": "123",
+  "firstName": "John",
+  "lastName": "Doe",
+  "role": "Software Engineer",
+}
+
+---------------------------------------------------------------------------------->>
+employeeSessions :  Méthode HTTP : GET
+
+Paramètres : date
+
+Headers requis :
+           Authorization: Bearer <token>
+
+Réponse :
+[
+  {
+    "id": "session1",
+    "employee_id": "123",
+    "start_time": "2023-01-15T08:00:00+01:00",
+    "end_time": "2023-01-15T16:00:00+01:00"
+  },
+  {nect
+    "id": "session2",
+    "employee_id": "123",
+    "start_time": "2023-01-16T08:00:00+01:00",
+    "end_time": "2023-01-16T16:00:00+01:00"
+  }
+]
+
+
+
+
+
+
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+sudo $(which uvicorn) app.main:app --host 0.0.0.0 --port 443 --ssl-keyfile /etc/ssl/fastapi/key.pem --ssl-certfile /etc/ssl/fastapi/cert.pem
+ngrok http 8000
+flutter run -d chrome --web-port=3000 --web-hostname=0.0.0.0
+flutter run -d emulator-5554 --web-hostname=0.0.0.0 --web-port=3000
+
+python app/LoRa/simulationDATA.py
+sqlitebrowser database.db
+
+
+
+
+# Sur le Pi4, exécuter :
+sudo mkdir -p /etc/ssl/fastapi
+sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/ssl/fastapi/key.pem -out /etc/ssl/fastapi/cert.pem -subj "/C=TN/ST=Monastir/L=KsibetELMadiouni/O=ENICarthage/OU=Electronique/CN=pi4-servor"
+
+
+🚀 Déploiement
+     # Sur ton PC (copier vers RPi)
+     scp infra/firewall/nftables.conf pi@pi4-servor:/tmp/
+
+     # Sur le RPi (appliquer)
+     ssh pi@pi4-servor "sudo cp /tmp/nftables.conf /etc/ && sudo nft -f /etc/nftables.conf"
+
+
+
+
+     |                  | nftables         | rate\_limit.py        |
+| ---------------- | ---------------- | --------------------- |
+| **Rôle**         | Garde du château | Gardien à l'intérieur |
+| **Vitesse**      | Éclair           | Normal                |
+| **Intelligence** | Basique          | Avancée               |
+| **Besoin**       | Obligatoire      | Complémentaire        |
+*
+
+
+
+
+
+
+
+
+
+
+
+# 1. Installer Fail2Ban
+sudo apt install fail2ban
+
+# 2. Copier les fichiers
+sudo cp monitoring/fail2ban/jail.local /etc/fail2ban/
+sudo cp monitoring/fail2ban/fastapi.conf /etc/fail2ban/filter.d/
+
+# 3. Créer le log FastAPI (si besoin)
+sudo touch /var/log/fastapi.log
+sudo chmod 644 /var/log/fastapi.log
+
+# 4. Redémarrer
+sudo systemctl enable fail2ban
+sudo systemctl restart fail2ban
+
+
+
+✅ Vérification
+sudo fail2ban-client status
+sudo fail2ban-client status sshd
+sudo fail2ban-client status fastapi
+
+
+
+
+
+
+
+
+
+
+
+
+Sur le RPi, le user fastapi doit pouvoir écrire dans /var/log :
+
+# Sur le RPi
+sudo touch /var/log/fastapi.log
+sudo chown fastapi:fastapi /var/log/fastapi.log
+sudo chmod 644 /var/log/fastapi.log
+
+
+
+| Question                    | Réponse                                   |
+| --------------------------- | ----------------------------------------- |
+| Pourquoi 10 MB ?            | Évite un seul fichier énorme              |
+| Pourquoi 5 backups ?        | Garde l'historique sans saturer le disque |
+| Que se passe-t-il après 5 ? | Le plus ancien (`log.5`) est supprimé     |
+
+fastapi.log      (10 MB)
+fastapi.log.1    (10 MB)
+fastapi.log.2    (10 MB)
+fastapi.log.3    (10 MB)
+fastapi.log.4    (10 MB)
+fastapi.log.5    (10 MB)
+─────────────────────────
+Total : 60 MB max
+
+
+
+
+
+[Client] ──► [FastAPI] ──► fastapi.log (toutes les requêtes)
+                │
+                ▼
+         [Fail2Ban lit fastapi.log]
+                │
+                ├──► Pattern match (3 × 401)
+                │
+                ▼
+         [nftables ban IP]
+                │
+                ▼
+         fail2ban.log (action de ban enregistrée)
+
+
+
+644	-rw-r--r--
+Propriétaire : lecture + écriture
+Groupe : lecture
+Autres : lecture
+
+sudo chown $USER:$USER database.db
+chmod 644 database.db
+
+
+
+
+
+
+
+
+
+mise a jour automatique :
+
+# Copier depuis le repo
+sudo cp /home/fastapi/app/infra/systemd/update-fastapi.service /etc/systemd/system/
+sudo cp /home/fastapi/app/infra/systemd/update-fastapi.timer /etc/systemd/system/
+
+# Activer
+sudo systemctl daemon-reload
+sudo systemctl enable update-fastapi.timer
+sudo systemctl start update-fastapi.timer
+
+
+
+openssl a n'est pas install dans le pi4  , les key  a generé dans le pc de dev
+
+
+
+http://localhost:19999/  pour netdata
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+pour tmux commande : 
+ctr+b   puis 0 ,1 ...  pour mv d'un window a un autre 
+ctr+b puis c  pour new  window

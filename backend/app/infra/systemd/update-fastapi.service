@@ -1,0 +1,7 @@
+[Unit]
+Description=Update FastAPI
+
+[Service]
+Type=oneshot
+ExecStart=/home/fastapi/app/infra/scripts/update.sh
+User=root

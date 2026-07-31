@@ -1,0 +1,23 @@
+# backend/app/infra/monitoring/fail2ban/jail.local
+
+[DEFAULT]
+bantime = 600          # Durée du ban : 600 secondes = 10 minutes
+maxretry = 3           # Nombre d'échecs avant ban : 3 fois
+backend = systemd      # Comment lire les logs (systemd = journalctl)
+banaction = nftables   # Comment bannir : ajoute règle nftables
+
+[sshd]                 # Section SSH
+enabled = true         # Activer cette règle
+port = 22              # Port à surveiller
+filter = sshd          # Filtre prédéfini pour SSH
+logpath = /var/log/auth.log   # Fichier de logs SSH
+maxretry = 3           # 3 échecs de login = ban
+bantime = 600          # Ban pendant 10 minutes
+
+[fastapi]              # Section FastAPI (personnalisée)
+enabled = true         # Activer
+port = 443             # Port HTTPS à surveiller
+filter = fastapi       # Filtre personnalisé (fichier 2)
+logpath = /var/log/fastapi.log   # Logs de ton application
+maxretry = 5           # 5 échecs = ban (plus tolérant que SSH)
+bantime = 300          # Ban pendant 5 minutes (300 secondes)
