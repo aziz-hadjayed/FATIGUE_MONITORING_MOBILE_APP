@@ -23,4 +23,5 @@ pubspec.lock
 
 
 # Env
-.env
+.envbackend/database.db
+backend/vision_debug.jsonl
