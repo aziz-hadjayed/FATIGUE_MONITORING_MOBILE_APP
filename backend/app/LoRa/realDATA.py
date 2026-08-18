@@ -1,14 +1,18 @@
 # ═══════════════════════════════════════════════════════════════════════
 # backend/app/LoRa/realDATA.py
-# Réception temps réel LoRa UART : bracelets -> table Data
+# Réception temps réel LoRa SPI (module LoRa-C1 / puce SX1278) : bracelets -> table Data
 # AVEC DÉTECTION VISAGE TFLITE
 # ═══════════════════════════════════════════════════════════════════════
 
 # ─── CONFIGURATION (variables modifiables en haut) ────────────────────
-SERIAL_PORT = "/dev/ttyAMA0"
-BAUDRATE = 9600
-SERIAL_RECONNECT_SEC = 3.0
-SERIAL_TIMEOUT_SEC = 1.0
+SPI_BUS = 0
+SPI_DEVICE = 0
+SPI_SPEED_HZ = 5_000_000
+DIO0_PIN = 25          # GPIO25 (BCM) - IRQ RxDone/TxDone du SX1278
+RESET_PIN = 17         # GPIO17 (BCM) - NRESET matériel du module
+LORA_FREQUENCY_MHZ = 433.0  # Fréquence porteuse du module LoRa-C1 (à adapter selon le variant 433/868/915 MHz)
+SPI_RECONNECT_SEC = 3.0
+DIO0_TIMEOUT_SEC = 1.0
 MAX_LINE_BYTES = 256
 QUEUE_MAXSIZE = 200
 MAX_WORKERS = 4
@@ -31,9 +35,14 @@ from json import JSONDecodeError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 try:
-    import serial
+    import spidev
 except ImportError:
-    serial = None
+    spidev = None
+
+try:
+    import RPi.GPIO as GPIO
+except ImportError:
+    GPIO = None
 
 # Ajouter le parent de LoRa (app/) au path pour les imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -41,6 +50,37 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database import Employee, Data, engine, SessionLocal
 from schemas import DataCreate
 from image.camera import CLASS_MAPPING, detect_fatigue_from_camera_for_bracelet, init_vision
+
+
+# ─── Registres et constantes SX1278 (mode LoRa) ───────────────────────
+REG_FIFO = 0x00
+REG_OP_MODE = 0x01
+REG_FRF_MSB = 0x06
+REG_FRF_MID = 0x07
+REG_FRF_LSB = 0x08
+REG_LNA = 0x0C
+REG_FIFO_ADDR_PTR = 0x0D
+REG_FIFO_TX_BASE_ADDR = 0x0E
+REG_FIFO_RX_BASE_ADDR = 0x0F
+REG_FIFO_RX_CURRENT_ADDR = 0x10
+REG_IRQ_FLAGS = 0x12
+REG_RX_NB_BYTES = 0x13
+REG_MODEM_CONFIG_1 = 0x1D
+REG_MODEM_CONFIG_2 = 0x1E
+REG_MAX_PAYLOAD_LENGTH = 0x23
+REG_MODEM_CONFIG_3 = 0x26
+REG_DIO_MAPPING_1 = 0x40
+REG_VERSION = 0x42
+
+MODE_LONG_RANGE_MODE = 0x80
+MODE_SLEEP = 0x00
+MODE_STDBY = 0x01
+MODE_RX_CONTINUOUS = 0x05
+
+IRQ_RX_DONE_MASK = 0x40
+IRQ_PAYLOAD_CRC_ERROR_MASK = 0x20
+
+FREQ_STEP = 32_000_000 / (2 ** 19)  # pas de fréquence du SX1278 (Fstep) en Hz
 
 
 class LoRaFrameIn(BaseModel):
@@ -58,7 +98,6 @@ class LoRaFrameIn(BaseModel):
             raise ValueError("state must be 0, 1, 2, or 3")
         return v
 
-
 # ─── Fonctions utilitaires ────────────────────────────────────────────
 def sanitize_for_log(value, max_len=120):
     """Supprime les caractères de contrôle et tronque avant affichage."""
@@ -67,7 +106,6 @@ def sanitize_for_log(value, max_len=120):
     if len(safe) > max_len:
         return safe[:max_len] + "..."
     return safe
-
 
 def get_existing_bracelets():
     """Récupère tous les id_bracelet existants dans Employee."""
@@ -80,7 +118,7 @@ def get_existing_bracelets():
 
 
 def parse_lora_line(raw_line):
-    """Valide strictement une ligne UART et retourne une LoRaFrameIn ou None."""
+    """Valide strictement un payload SPI (extrait de la FIFO SX1278) et retourne une LoRaFrameIn ou None."""
     if len(raw_line) > MAX_LINE_BYTES:
         print(f" Trame LoRa trop longue ({len(raw_line)} octets), ignorée")
         return None
@@ -196,11 +234,11 @@ def insert_data(db, data_create, detection_info=None, flush_last_seen=False):
           f"Conf={data_create.confidence} | {vision_str}")
 
 
-class LoRaSerialReader(threading.Thread):
-    """Lit les trames LoRa UART et pousse les payloads validés dans une queue."""
+class LoRaSPIReader(threading.Thread):
+    """Lit les trames LoRa via le bus SPI (module LoRa-C1 / SX1278) et pousse les payloads validés dans une queue."""
 
     def __init__(self, frame_queue, stop_event):
-        super().__init__(name="LoRaSerialReader", daemon=True)
+        super().__init__(name="LoRaSPIReader", daemon=True)
         self.frame_queue = frame_queue
         self.stop_event = stop_event
 
@@ -209,27 +247,121 @@ class LoRaSerialReader(threading.Thread):
             self._run_simulation()
             return
 
-        if serial is None:
-            print("pyserial n'est pas installé, exécutez: pip install pyserial")
+        if spidev is None or GPIO is None:
+            print("spidev / RPi.GPIO ne sont pas installés, exécutez: pip install spidev RPi.GPIO")
             self.stop_event.set()
             return
 
+        self._setup_gpio()
+
         while not self.stop_event.is_set():
+            spi = None
             try:
-                print(f"📡 Ouverture LoRa UART: {SERIAL_PORT} @ {BAUDRATE} bauds")
-                with serial.Serial(SERIAL_PORT, BAUDRATE, timeout=SERIAL_TIMEOUT_SEC) as ser:
-                    print("📡 LoRa UART connecté")
-                    while not self.stop_event.is_set():
-                        raw_line = ser.readline()
-                        if not raw_line:
-                            continue
-                        self._handle_raw_line(raw_line)
+                print(f"📡 Ouverture LoRa SPI: /dev/spidev{SPI_BUS}.{SPI_DEVICE} @ {SPI_SPEED_HZ} Hz")
+                spi = spidev.SpiDev()
+                spi.open(SPI_BUS, SPI_DEVICE)
+                spi.max_speed_hz = SPI_SPEED_HZ
+                spi.mode = 0b00
+
+                self._reset_module()
+                self._init_sx1278(spi)
+                print("📡 LoRa SPI connecté (module SX1278 en réception continue)")
+
+                while not self.stop_event.is_set():
+                    raw_line = self._read_packet(spi)
+                    if not raw_line:
+                        continue
+                    self._handle_raw_line(raw_line)
             except OSError as exc:
-                print(f" Erreur port LoRa ({sanitize_for_log(exc)}), reconnexion dans {SERIAL_RECONNECT_SEC}s")
-                self.stop_event.wait(SERIAL_RECONNECT_SEC)
+                print(f" Erreur bus SPI LoRa ({sanitize_for_log(exc)}), reconnexion dans {SPI_RECONNECT_SEC}s")
+                self.stop_event.wait(SPI_RECONNECT_SEC)
             except Exception as exc:
-                print(f" Erreur LoRa inattendue ({sanitize_for_log(exc)}), reprise dans {SERIAL_RECONNECT_SEC}s")
-                self.stop_event.wait(SERIAL_RECONNECT_SEC)
+                print(f" Erreur LoRa inattendue ({sanitize_for_log(exc)}), reprise dans {SPI_RECONNECT_SEC}s")
+                self.stop_event.wait(SPI_RECONNECT_SEC)
+            finally:
+                if spi is not None:
+                    spi.close()
+
+    def _setup_gpio(self):
+        """Configure les broches DIO0 (IRQ RxDone) et NRESET du module."""
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(RESET_PIN, GPIO.OUT)
+        GPIO.setup(DIO0_PIN, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+
+    def _reset_module(self):
+        """Séquence de reset matérielle du module SX1278 via NRESET."""
+        GPIO.output(RESET_PIN, GPIO.LOW)
+        time.sleep(0.01)
+        GPIO.output(RESET_PIN, GPIO.HIGH)
+        time.sleep(0.01)
+
+    def _init_sx1278(self, spi):
+        """Configure le module SX1278 en mode LoRa, réception continue."""
+        # Sommeil + activation du mode LoRa (LongRangeMode)
+        self._write_register(spi, REG_OP_MODE, MODE_LONG_RANGE_MODE | MODE_SLEEP)
+        time.sleep(0.01)
+
+        # Fréquence porteuse
+        frf = int((LORA_FREQUENCY_MHZ * 1_000_000) / FREQ_STEP)
+        self._write_register(spi, REG_FRF_MSB, (frf >> 16) & 0xFF)
+        self._write_register(spi, REG_FRF_MID, (frf >> 8) & 0xFF)
+        self._write_register(spi, REG_FRF_LSB, frf & 0xFF)
+
+        # Base FIFO TX/RX
+        self._write_register(spi, REG_FIFO_TX_BASE_ADDR, 0x00)
+        self._write_register(spi, REG_FIFO_RX_BASE_ADDR, 0x00)
+
+        # Boost du LNA
+        lna = self._read_register(spi, REG_LNA)
+        self._write_register(spi, REG_LNA, lna | 0x03)
+
+        # BW=125kHz, CR=4/5, en-tête explicite ; SF7, CRC activé ; AGC auto
+        self._write_register(spi, REG_MODEM_CONFIG_1, 0x72)
+        self._write_register(spi, REG_MODEM_CONFIG_2, 0x74)
+        self._write_register(spi, REG_MODEM_CONFIG_3, 0x04)
+
+        self._write_register(spi, REG_MAX_PAYLOAD_LENGTH, MAX_LINE_BYTES)
+        self._write_register(spi, REG_DIO_MAPPING_1, 0x00)  # DIO0 -> RxDone
+
+        # Standby puis réception continue
+        self._write_register(spi, REG_OP_MODE, MODE_LONG_RANGE_MODE | MODE_STDBY)
+        time.sleep(0.01)
+        self._write_register(spi, REG_OP_MODE, MODE_LONG_RANGE_MODE | MODE_RX_CONTINUOUS)
+
+    @staticmethod
+    def _read_register(spi, address):
+        response = spi.xfer2([address & 0x7F, 0x00])
+        return response[1]
+
+    @staticmethod
+    def _write_register(spi, address, value):
+        spi.xfer2([address | 0x80, value & 0xFF])
+
+    @staticmethod
+    def _read_fifo(spi, length):
+        response = spi.xfer2([REG_FIFO & 0x7F] + [0x00] * length)
+        return bytes(response[1:])
+
+    def _read_packet(self, spi):
+        """Attend l'IRQ DIO0 (RxDone) et lit le paquet reçu depuis la FIFO du SX1278."""
+        channel = GPIO.wait_for_edge(DIO0_PIN, GPIO.RISING, timeout=int(DIO0_TIMEOUT_SEC * 1000))
+        if channel is None:
+            return None  # timeout : permet de vérifier stop_event périodiquement
+
+        irq_flags = self._read_register(spi, REG_IRQ_FLAGS)
+        self._write_register(spi, REG_IRQ_FLAGS, 0xFF)  # acquitte tous les flags IRQ
+
+        if not (irq_flags & IRQ_RX_DONE_MASK):
+            return None
+        if irq_flags & IRQ_PAYLOAD_CRC_ERROR_MASK:
+            print(" Trame LoRa reçue avec erreur CRC, ignorée")
+            return None
+
+        current_addr = self._read_register(spi, REG_FIFO_RX_CURRENT_ADDR)
+        nb_bytes = self._read_register(spi, REG_RX_NB_BYTES)
+
+        self._write_register(spi, REG_FIFO_ADDR_PTR, current_addr)
+        return self._read_fifo(spi, nb_bytes)
 
     def _run_simulation(self):
         print("📡 Mode LoRa simulé activé")
@@ -283,9 +415,10 @@ def run_reception(stop_event=None):
     print(f"\n{'='*60}")
     print("  RÉCEPTION LoRa - Table Data AVEC VISION")
     print(f"{'='*60}")
-    print(f"  Port série          : {SERIAL_PORT}")
-    print(f"  Baudrate            : {BAUDRATE}")
-    print(f"  Mode LoRa           : {'SIMULATION' if USE_SIMULATION_LORA else 'UART RÉEL'}")
+    print(f"  Bus SPI             : /dev/spidev{SPI_BUS}.{SPI_DEVICE}")
+    print(f"  Vitesse SPI         : {SPI_SPEED_HZ} Hz")
+    print(f"  DIO0 / NRESET       : GPIO{DIO0_PIN} / GPIO{RESET_PIN}")
+    print(f"  Mode LoRa           : {'SIMULATION' if USE_SIMULATION_LORA else 'SPI RÉEL'}")
     print(f"  Mode vision         : {'SIMULATION' if USE_SIMULATION else 'CAMÉRA RÉELLE'}")
     print(f"{'='*60}\n")
 
@@ -312,7 +445,7 @@ def run_reception(stop_event=None):
         stop_event = threading.Event()
 
     frame_queue = queue.Queue(maxsize=QUEUE_MAXSIZE)
-    reader = LoRaSerialReader(frame_queue, stop_event)
+    reader = LoRaSPIReader(frame_queue, stop_event)
 
     insert_counters = {}
     last_processed_at = {}
@@ -346,7 +479,9 @@ def run_reception(stop_event=None):
         print("\n Arrêt demandé...")
     finally:
         stop_event.set()
-        reader.join(timeout=SERIAL_RECONNECT_SEC + 1.0)
+        reader.join(timeout=SPI_RECONNECT_SEC + 1.0)
+        if GPIO is not None and not USE_SIMULATION_LORA:
+            GPIO.cleanup()
         print(f"\n{'='*60}")
         print("   RÉCEPTION LoRa TERMINÉE")
         print(f"{'='*60}")

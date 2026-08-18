@@ -27,11 +27,11 @@ logger = logging.getLogger(__name__)
 # ============================================
 
 # Chemins des modèles (absolus depuis backend/)
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BACKEND_DIR = os.path.dirname(BASE_DIR)
-DETECTION_MODEL_PATH = os.path.join(BACKEND_DIR, "yolov8n_detect_int8.tflite")
-CLASSIFICATION_MODEL_PATH = os.path.join(BACKEND_DIR, "yolov8n_classify_int8.tflite")
-VISION_DEBUG_LOG = os.path.join(BACKEND_DIR, "vision_debug.jsonl")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # backend/app/image
+BACKEND_DIR = os.path.dirname(BASE_DIR) # backend/
+DETECTION_MODEL_PATH = os.path.join(BACKEND_DIR, "yolov8n_detect_int8.tflite") # backend/yolov8n_detect_int8.tflite
+CLASSIFICATION_MODEL_PATH = os.path.join(BACKEND_DIR, "yolov8n_classify_int8.tflite") # backend/yolov8n_classify_int8.tflite
+VISION_DEBUG_LOG = os.path.join(BACKEND_DIR, "vision_debug.jsonl") # backend/vision_debug.jsonl
 
 # Paramètres vision
 CONF_THRESHOLD = 0.25
