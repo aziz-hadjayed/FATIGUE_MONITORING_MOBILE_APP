@@ -14,8 +14,7 @@ from ..database import SessionLocal, Admin, Employee, Data
 from ..schemas import (
     AdminCreate, AdminLogin, AdminOut, Token,
     EmployeeCreate, EmployeeOut, DataCreate, DataOut,
-    ForgotPasswordRequest, ResetPasswordRequest,
-    ChangePasswordRequest, UpdateProfileRequest
+    ForgotPasswordRequest, ResetPasswordRequest, UpdateProfileRequest
 )
 from ..auth import (
     get_password_hash, authenticate_admin, create_access_token,
@@ -461,33 +460,6 @@ def reset_password(
         "success": True,
         "message": "Password reset successfully"
     }
-
-
-@router.post("/change-password")
-def change_password(
-    request: ChangePasswordRequest,
-    current_admin: Admin = Depends(get_current_admin),
-    db: Session = Depends(get_db)
-):
-    """
-    Change le mot de passe pour un admin authentifié
-    """
-    # Vérifier le mot de passe actuel
-    if not authenticate_admin(db, current_admin.mail, request.current_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Current password is incorrect"
-        )
-    
-    # Mettre à jour le mot de passe
-    current_admin.hashed_password = get_password_hash(request.new_password)
-    db.commit()
-    
-    return {
-        "success": True,
-        "message": "Password changed successfully"
-    }
-
 
 # ==================== EMPLOYEE MANAGEMENT ====================
 
