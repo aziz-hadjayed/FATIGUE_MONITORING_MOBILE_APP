@@ -40,6 +40,7 @@ IMG_SIZE_DET = 640
 IMG_SIZE_CLS = 224
 DEBUG_TOP_CANDIDATES = 5
 
+_cap = None
 # Couleurs pour affichage
 COLOR_FATIGUE = (0, 0, 255)      # Rouge
 COLOR_NON_FATIGUE = (0, 255, 0)  # Vert
@@ -106,7 +107,7 @@ def load_models():
         )
     
     if _cls_model is None:
-        logger.info(f"📷 Chargement modèle classification: {CLASSIFICATION_MODEL_PATH}")
+        logger.info(f" Chargement modèle classification: {CLASSIFICATION_MODEL_PATH}")
         if not os.path.exists(CLASSIFICATION_MODEL_PATH):
             logger.error(f"Fichier non trouvé: {CLASSIFICATION_MODEL_PATH}")
             return False
@@ -233,33 +234,47 @@ def classify_fatigue(face_roi) -> Tuple[str, float, bool]:
     """
     Classifie un visage en Fatigue / Non-Fatigue
     
+    该函数用于对人脸图像进行疲劳分类判断
+    Args:
+        face_roi: 人脸区域图像，将用于疲劳分类
     Returns:
         tuple: (label, confidence, is_fatigue)
     """
+    # 加载分类模型
     cls_model = get_classification_model()
+    # 检查模型是否加载成功
     if cls_model is None:
         return "Erreur", 0.0, False
     
+    # 检查预处理是否成功
     face_processed = preprocess_face_for_classification(face_roi, IMG_SIZE_CLS)
     
     if face_processed is None:
+    # 使用全局变量记录上一次分类推理时间
         return "Erreur", 0.0, False
     
+    # 准备TensorFlow Lite输入张量
     global _last_classification_inference_time_ms
+    # 记录推理开始时间
 
+    # 运行TensorFlow Lite模型进行推理
     input_tensor = prepare_tflite_input(face_processed, _cls_input)
+    # 计算并更新推理耗时
     start = time.perf_counter()
+    # 压缩输出并获取概率值
     output = run_tflite(cls_model, _cls_input, _cls_output, input_tensor, _cls_lock)
     _last_classification_inference_time_ms = round((time.perf_counter() - start) * 1000, 2)
     probs = np.squeeze(output)
     pred = int(np.argmax(probs))
     confidence = float(probs[pred])
 
+    # 根据预测结果返回相应的标签和状态
     if pred == 0:
         return "FATIGUE", confidence, True
     if pred == 1:
         return "NON-FATIGUE", confidence, False
     
+    # 如果预测结果不是0或1，返回未知状态
     return "INCONNU", 0.0, False
 
 
@@ -499,7 +514,12 @@ def simulate_frame_for_bracelet(bracelet_id: int) -> Tuple[bool, float, Dict]:
 # ============================================
 # FONCTION PRINCIPALE POUR LE BRACELET
 # ============================================
-
+def get_camera():
+    """Ouvre la caméra une seule fois et la garde active."""
+    global _cap
+    if _cap is None or not _cap.isOpened():
+        _cap = cv2.VideoCapture(0)
+    return _cap
 def detect_fatigue_from_camera_for_bracelet(bracelet_id: int, use_simulation: bool = True) -> Tuple[bool, float, Dict]:
     """
     Détecte la fatigue pour un bracelet donné
@@ -517,37 +537,25 @@ def detect_fatigue_from_camera_for_bracelet(bracelet_id: int, use_simulation: bo
     
     # Mode réel (avec caméra). Un seul thread doit ouvrir la caméra à la fois.
     with _camera_lock:
-        cap = None
         try:
-            logger.info(
-                f"Détection caméra pour bracelet #{bracelet_id} "
-                f"({CLASS_MAPPING.get(bracelet_id, f'Bracelet_{bracelet_id}')})"
-            )
-            cap = cv2.VideoCapture(0)
-            
+            logger.info(...)
+            cap = get_camera()
             if not cap.isOpened():
                 logger.warning("Impossible d'ouvrir la caméra, utilisation de la simulation")
                 return simulate_frame_for_bracelet(bracelet_id)
-            
-            # Quelques frames de warm-up donnent souvent une image plus nette.
-            frame = None
-            ret = False
-            for _ in range(3):
-                ret, frame = cap.read()
-            
+
+            ret, frame = cap.read()  # une seule lecture, caméra déjà "chaude"
             if not ret or frame is None:
                 logger.warning("Erreur lecture caméra, utilisation de la simulation")
                 return simulate_frame_for_bracelet(bracelet_id)
-            
+
             return process_image_for_bracelet(frame, bracelet_id)
-            
+
         except Exception as e:
             logger.error(f" Erreur caméra: {e}")
             return simulate_frame_for_bracelet(bracelet_id)
-        
-        finally:
-            if cap is not None:
-                cap.release()
+    # plus de cap.release() ici -- on la garde ouverte pour le prochain appel
+
 
 
 def init_vision():

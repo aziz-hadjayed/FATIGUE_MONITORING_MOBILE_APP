@@ -25,3 +25,7 @@ pubspec.lock
 # Env
 .envbackend/database.db
 backend/vision_debug.jsonl
+
+backend/.env
+*.db
+build/

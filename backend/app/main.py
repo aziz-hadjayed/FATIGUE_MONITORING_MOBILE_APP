@@ -126,11 +126,4 @@ else:
     print("   Pour générer le frontend:")
     print("   cd frontend && flutter build web --release")
 
-# ============================================================
-# ROOT HEALTH
-# ============================================================
-@app.get("/health")
-def health():
-    return {"message": "Fatigue Detection API", "status": "running"}
 
-# L'ancienne route "/" est maintenant remplacée par le frontend

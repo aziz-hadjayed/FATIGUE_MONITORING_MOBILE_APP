@@ -173,7 +173,7 @@ def generate_data_point(id_bracelet, state, confidence):
             print(f"    Détails vision: {info}")
             if "detection_inference_time_ms" in info:
                 print(
-                    "   ⏱ Temps vision: "
+                    "   Temps vision: "
                     f"détection={info.get('detection_inference_time_ms', 0.0):.2f}ms | "
                     f"classification={info.get('classification_inference_time_ms', 0.0):.2f}ms | "
                     f"total={info.get('total_vision_time_ms', 0.0):.2f}ms"
@@ -257,7 +257,7 @@ class LoRaSPIReader(threading.Thread):
         while not self.stop_event.is_set():
             spi = None
             try:
-                print(f"📡 Ouverture LoRa SPI: /dev/spidev{SPI_BUS}.{SPI_DEVICE} @ {SPI_SPEED_HZ} Hz")
+                print(f" Ouverture LoRa SPI: /dev/spidev{SPI_BUS}.{SPI_DEVICE} @ {SPI_SPEED_HZ} Hz")
                 spi = spidev.SpiDev()
                 spi.open(SPI_BUS, SPI_DEVICE)
                 spi.max_speed_hz = SPI_SPEED_HZ
@@ -265,7 +265,7 @@ class LoRaSPIReader(threading.Thread):
 
                 self._reset_module()
                 self._init_sx1278(spi)
-                print("📡 LoRa SPI connecté (module SX1278 en réception continue)")
+                print(" LoRa SPI connecté (module SX1278 en réception continue)")
 
                 while not self.stop_event.is_set():
                     raw_line = self._read_packet(spi)
@@ -317,7 +317,7 @@ class LoRaSPIReader(threading.Thread):
 
         # BW=125kHz, CR=4/5, en-tête explicite ; SF7, CRC activé ; AGC auto
         self._write_register(spi, REG_MODEM_CONFIG_1, 0x72)
-        self._write_register(spi, REG_MODEM_CONFIG_2, 0x74)
+        self._write_register(spi, REG_MODEM_CONFIG_2, 0x94)
         self._write_register(spi, REG_MODEM_CONFIG_3, 0x04)
 
         self._write_register(spi, REG_MAX_PAYLOAD_LENGTH, MAX_LINE_BYTES)
